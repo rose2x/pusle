@@ -1,0 +1,53 @@
+name: Build Linux DEB
+
+on:
+  push:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+        sudo apt-get update
+        sudo apt-get install -y ruby ruby-dev rubygems build-essential
+        sudo gem install fpm
+        
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller --noconfirm --onefile --windowed --add-data "templates:templates" --add-data "static:static" --name "PulseMusic" app.py
+        
+    - name: Create DEB package with FPM
+      run: |
+        mkdir -p package_root/usr/local/bin
+        mkdir -p package_root/usr/share/applications
+        cp dist/PulseMusic package_root/usr/local/bin/
+        chmod +x package_root/usr/local/bin/PulseMusic
+        
+        cat <<EOF > package_root/usr/share/applications/pulsemusic.desktop
+        [Desktop Entry]
+        Name=Pulse Music
+        Exec=/usr/local/bin/PulseMusic
+        Type=Application
+        Categories=AudioVideo;Audio;Player;
+        Terminal=false
+        EOF
+        
+        fpm -s dir -t deb -n "pulsemusic" -v "1.0.0" -C package_root -p PulseMusic_Linux.deb usr/
+        
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: PulseMusic_DEB
+        path: PulseMusic_Linux.deb
