@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pulse Music</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=8">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Splash Screen -->
+    <div id="splash-screen">
+        <div class="splash-content">
+            <i class="fas fa-heartbeat pulse-icon"></i>
+            <h1>PULSE</h1>
+            <p>Loading your music...</p>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container"></div>
+
+    <div class="app-container">
+        
+        <div class="main-body">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="logo">
+                    <i class="fas fa-wave-square"></i>
+                    <h1>Pulse</h1>
+                </div>
+                
+                <nav class="nav-links">
+                    <a href="#" id="nav-search" class="active"><i class="fas fa-search"></i> Search</a>
+                    <a href="#" id="nav-downloads"><i class="fas fa-download"></i> Downloads</a>
+                    <a href="#" id="nav-settings"><i class="fas fa-cog"></i> Settings</a>
+                </nav>
+                
+                <div class="playlists-section">
+                    <div class="pl-header">
+                        <h3>YOUR PLAYLISTS</h3>
+                        <button id="btn-new-playlist" title="Create Playlist"><i class="fas fa-plus"></i></button>
+                    </div>
+                    <ul id="playlists-list" class="playlists-list">
+                        <!-- Playlists loaded here -->
+                    </ul>
+                </div>
+            </aside>
+            
+            <!-- Main Content Area -->
+            <main class="content-area">
+                <header class="top-bar">
+                    <div class="search-container" id="search-view">
+                        <i class="fas fa-search search-icon"></i>
+                        <input type="text" id="search-input" placeholder="Search for tracks, artists..." autofocus>
+                        <div class="spinner" id="search-spinner" style="display: none;"></div>
+                    </div>
+                    <h2 id="view-title" style="display: none;">Liked Songs</h2>
+                </header>
+
+                <div class="scroll-area">
+                    <div id="results-container">
+                        <div class="empty-state">
+                            <i class="fas fa-compact-disc"></i>
+                            <p>Search for tracks or open a playlist</p>
+                        </div>
+                    </div>
+                    
+                    <div id="settings-container" style="display: none; color: var(--text-primary);">
+                        <div class="settings-section">
+                            <h3>Appearance</h3>
+                            <p>Choose your application theme.</p>
+                            <div class="theme-options" style="display: flex; gap: 1rem; margin-top: 1rem;">
+                                <button class="btn-theme" data-theme="sunset">Sunset (Dark Red)</button>
+                                <button class="btn-theme" data-theme="classic">Classic Pulse (Cyan)</button>
+                                <button class="btn-theme" data-theme="light">Light Mode</button>
+                            </div>
+                        </div>
+                        
+                        <div class="settings-section" style="margin-top: 2rem;">
+                            <h3>Data Storage</h3>
+                            <p>Choose where to save your playlists.</p>
+                            <div style="display: flex; gap: 1rem; margin-top: 1rem; align-items: center;">
+                                <input type="text" id="input-playlist-path" readonly style="flex:1; padding: 0.8rem; background: rgba(255,255,255,0.1); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px;">
+                                <button id="btn-choose-folder" style="padding: 0.8rem 1.5rem; background: var(--accent-primary); border: none; color: white; border-radius: 4px; cursor: pointer; font-weight: bold;">Choose Folder</button>
+                            </div>
+                        </div>
+
+                        <div class="settings-section" style="margin-top: 2rem;">
+                            <h3>Offline Music</h3>
+                            <p>Choose where to save downloaded songs.</p>
+                            <div style="display: flex; gap: 1rem; margin-top: 1rem; align-items: center;">
+                                <input type="text" id="input-download-path" readonly style="flex:1; padding: 0.8rem; background: rgba(255,255,255,0.1); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px;">
+                                <button id="btn-choose-download-folder" style="padding: 0.8rem 1.5rem; background: var(--accent-secondary); border: none; color: white; border-radius: 4px; cursor: pointer; font-weight: bold;">Choose Folder</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Player Bar -->
+        <footer class="player-bar">
+            <div class="now-playing">
+                <img id="np-thumbnail" src="https://via.placeholder.com/60" alt="" style="display: none;">
+                <div class="np-info">
+                    <h3 id="np-title">No track playing</h3>
+                    <p id="np-artist">---</p>
+                </div>
+            </div>
+            
+            <div class="player-controls">
+                <div class="controls-main">
+                    <button id="btn-shuffle" title="Shuffle (Off)"><i class="fas fa-random"></i></button>
+                    <button id="btn-prev" disabled><i class="fas fa-step-backward"></i></button>
+                    <button id="btn-play-pause" disabled class="btn-play"><i class="fas fa-play"></i></button>
+                    <button id="btn-next" disabled><i class="fas fa-step-forward"></i></button>
+                    <button id="btn-repeat" title="Repeat (Off)"><i class="fas fa-redo"></i></button>
+                </div>
+                <div class="progress-container">
+                    <span id="time-current">0:00</span>
+                    <div class="progress-bar-bg" id="progress-bg">
+                        <div class="progress-bar-fill" id="progress-fill"></div>
+                    </div>
+                    <span id="time-total">0:00</span>
+                </div>
+            </div>
+            
+            <div class="volume-container">
+                <button id="btn-mute"><i class="fas fa-volume-up"></i></button>
+                <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1">
+            </div>
+        </footer>
+        
+    </div>
+
+    <!-- Modals -->
+    <div id="playlist-modal" class="modal">
+        <div class="modal-content">
+            <h3>Add to Playlist</h3>
+            <ul id="modal-playlists-list"></ul>
+            <button id="btn-close-modal">Close</button>
+        </div>
+    </div>
+
+    <!-- Hidden HTML5 Audio element -->
+    <audio id="audio-player"></audio>
+
+    <script src="{{ url_for('static', filename='script.js') }}?v=8"></script>
+</body>
+</html>
