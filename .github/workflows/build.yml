@@ -24,7 +24,7 @@ jobs:
     - name: Install system dependencies for Arch Linux
       run: |
         sudo apt-get update
-        sudo apt-get install -y ruby ruby-dev rubygems build-essential libarchive-dev
+        sudo apt-get install -y ruby ruby-dev rubygems build-essential libarchive-tools
         sudo gem install fpm
     
     - name: Build with PyInstaller
