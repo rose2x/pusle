@@ -1,6 +1,4 @@
-name: build-linux-universal.yml
-# Copy this content to: .github/workflows/build-linux-universal.yml
-
+name=.github/workflows/build.yml
 name: Build Linux Universal
 
 on:
