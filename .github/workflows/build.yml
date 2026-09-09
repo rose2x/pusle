@@ -1,12 +1,42 @@
-name: Build Linux DEB
+name: build-linux-universal.yml
+# Copy this content to: .github/workflows/build-linux-universal.yml
+
+name: Build Linux Universal
 
 on:
   push:
     branches: [ "main", "master" ]
 
 jobs:
-  build:
+  build-linux-universal:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # Debian/Ubuntu based
+          - distro: "debian"
+            package_type: "deb"
+            setup_cmd: "sudo apt-get update && sudo apt-get install -y ruby ruby-dev rubygems build-essential"
+            gem_install: "sudo gem install fpm"
+          
+          # RPM based (Red Hat, CentOS, Fedora)
+          - distro: "rpm"
+            package_type: "rpm"
+            setup_cmd: "sudo apt-get update && sudo apt-get install -y ruby ruby-dev rubygems build-essential"
+            gem_install: "sudo gem install fpm"
+          
+          # Arch Linux
+          - distro: "arch"
+            package_type: "pacman"
+            setup_cmd: "sudo apt-get update && sudo apt-get install -y ruby ruby-dev rubygems build-essential"
+            gem_install: "sudo gem install fpm"
+          
+          # Generic tarball for all Linux distributions
+          - distro: "generic"
+            package_type: "tar"
+            setup_cmd: ""
+            gem_install: ""
+
     steps:
     - uses: actions/checkout@v4
     
@@ -14,21 +44,30 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-        
-    - name: Install dependencies
+    
+    - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
-        sudo apt-get update
-        sudo apt-get install -y ruby ruby-dev rubygems build-essential
-        sudo gem install fpm
-        
+    
+    - name: Install system dependencies for ${{ matrix.distro }}
+      if: matrix.setup_cmd != ''
+      run: ${{ matrix.setup_cmd }}
+    
+    - name: Install FPM for ${{ matrix.distro }}
+      if: matrix.gem_install != ''
+      run: ${{ matrix.gem_install }}
+    
     - name: Build with PyInstaller
       run: |
-        pyinstaller --noconfirm --onefile --windowed --add-data "templates:templates" --add-data "static:static" --name "PulseMusic" app.py
-        
-    - name: Create DEB package with FPM
+        pyinstaller --noconfirm --onefile --windowed \
+          --add-data "templates:templates" \
+          --add-data "static:static" \
+          --name "PulseMusic" app.py
+    
+    - name: Create DEB package (Debian/Ubuntu)
+      if: matrix.distro == 'debian'
       run: |
         mkdir -p package_root/usr/local/bin
         mkdir -p package_root/usr/share/applications
@@ -44,10 +83,95 @@ jobs:
         Terminal=false
         EOF
         
-        fpm -s dir -t deb -n "pulsemusic" -v "1.0.0" -C package_root -p PulseMusic_Linux.deb usr/
+        fpm -s dir -t deb -n "pulsemusic" -v "1.0.0" \
+          -C package_root -p PulseMusic_Linux_${{ matrix.distro }}.deb usr/
+    
+    - name: Create RPM package (Red Hat/CentOS/Fedora)
+      if: matrix.distro == 'rpm'
+      run: |
+        mkdir -p package_root/usr/local/bin
+        mkdir -p package_root/usr/share/applications
+        cp dist/PulseMusic package_root/usr/local/bin/
+        chmod +x package_root/usr/local/bin/PulseMusic
         
-    - name: Upload Artifact
+        cat <<EOF > package_root/usr/share/applications/pulsemusic.desktop
+        [Desktop Entry]
+        Name=Pulse Music
+        Exec=/usr/local/bin/PulseMusic
+        Type=Application
+        Categories=AudioVideo;Audio;Player;
+        Terminal=false
+        EOF
+        
+        fpm -s dir -t rpm -n "pulsemusic" -v "1.0.0" \
+          -C package_root -p PulseMusic_Linux_${{ matrix.distro }}.rpm usr/
+    
+    - name: Create Arch Linux package (PKGBUILD)
+      if: matrix.distro == 'arch'
+      run: |
+        mkdir -p package_root/usr/local/bin
+        mkdir -p package_root/usr/share/applications
+        cp dist/PulseMusic package_root/usr/local/bin/
+        chmod +x package_root/usr/local/bin/PulseMusic
+        
+        cat <<EOF > package_root/usr/share/applications/pulsemusic.desktop
+        [Desktop Entry]
+        Name=Pulse Music
+        Exec=/usr/local/bin/PulseMusic
+        Type=Application
+        Categories=AudioVideo;Audio;Player;
+        Terminal=false
+        EOF
+        
+        fpm -s dir -t pacman -n "pulsemusic" -v "1.0.0" \
+          -C package_root -p PulseMusic_Linux_${{ matrix.distro }}.pkg.tar.zst usr/
+    
+    - name: Create generic tarball (All Linux distributions)
+      if: matrix.distro == 'generic'
+      run: |
+        mkdir -p PulseMusic_Linux/bin
+        mkdir -p PulseMusic_Linux/share/applications
+        
+        cp dist/PulseMusic PulseMusic_Linux/bin/
+        chmod +x PulseMusic_Linux/bin/PulseMusic
+        
+        cat <<EOF > PulseMusic_Linux/share/applications/pulsemusic.desktop
+        [Desktop Entry]
+        Name=Pulse Music
+        Exec=$${INSTALL_DIR}/bin/PulseMusic
+        Type=Application
+        Categories=AudioVideo;Audio;Player;
+        Terminal=false
+        EOF
+        
+        cat <<EOF > PulseMusic_Linux/INSTALL.txt
+        PulseMusic Installation Instructions
+        =====================================
+        
+        1. Extract this archive to your desired location:
+           tar -xzf PulseMusic_Linux_generic.tar.gz
+           mv PulseMusic_Linux /opt/pulsemusic (or ~/.local/opt/pulsemusic)
+        
+        2. Create a symlink to the binary:
+           sudo ln -s /opt/pulsemusic/bin/PulseMusic /usr/local/bin/pulsemusic
+           # or for user install:
+           ln -s ~/.local/opt/pulsemusic/bin/PulseMusic ~/.local/bin/pulsemusic
+        
+        3. (Optional) Install the desktop entry:
+           sudo cp PulseMusic_Linux/share/applications/pulsemusic.desktop /usr/share/applications/
+        
+        4. Run PulseMusic:
+           pulsemusic
+        
+        Supported on: Debian, Ubuntu, Fedora, CentOS, Arch, openSUSE, and other Linux distributions
+        EOF
+        
+        tar -czf PulseMusic_Linux_generic.tar.gz PulseMusic_Linux/
+    
+    - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: PulseMusic_DEB
-        path: PulseMusic_Linux.deb
+        name: PulseMusic_Linux_${{ matrix.distro }}
+        path: |
+          PulseMusic_Linux_${{ matrix.distro }}.*
+          PulseMusic_Linux/
