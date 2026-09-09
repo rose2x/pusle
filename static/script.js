@@ -35,6 +35,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const modal = document.getElementById('playlist-modal');
     const modalPlaylistsList = document.getElementById('modal-playlists-list');
     const btnCloseModal = document.getElementById('btn-close-modal');
+    
+    // Info / Menu Elements
+    const btnMainMenu = document.getElementById('btn-main-menu');
+    const mainMenuDropdown = document.getElementById('main-menu-dropdown');
+    const infoModal = document.getElementById('info-modal');
+    const infoModalTitle = document.getElementById('info-modal-title');
+    const infoModalBody = document.getElementById('info-modal-body');
+    const btnCloseInfoModal = document.getElementById('btn-close-info-modal');
 
     // Settings Elements
     const inputPlaylistPath = document.getElementById('input-playlist-path');
@@ -52,6 +60,65 @@ document.addEventListener('DOMContentLoaded', () => {
     let repeatMode = 0; // 0=off, 1=playlist, 2=track
     let activeSongToAdd = null;
     let appConfig = {};
+    let lastSearchResults = []; // NEW: Cache search results
+
+    // ==================== CUSTOM MODALS (Replaces JS prompt/confirm) ====================
+    function customPrompt(title, defaultValue = '') {
+        return new Promise((resolve) => {
+            const m = document.getElementById('custom-prompt-modal');
+            const titleEl = document.getElementById('prompt-title');
+            const inputEl = document.getElementById('prompt-input');
+            const btnCancel = document.getElementById('btn-prompt-cancel');
+            const btnConfirm = document.getElementById('btn-prompt-confirm');
+            
+            titleEl.textContent = title;
+            inputEl.value = defaultValue;
+            m.style.display = 'flex';
+            inputEl.focus();
+            
+            const cleanup = () => {
+                m.style.display = 'none';
+                btnCancel.removeEventListener('click', onCancel);
+                btnConfirm.removeEventListener('click', onConfirm);
+                inputEl.removeEventListener('keydown', onKeyDown);
+            };
+            
+            const onCancel = () => { cleanup(); resolve(null); };
+            const onConfirm = () => { cleanup(); resolve(inputEl.value); };
+            const onKeyDown = (e) => {
+                if (e.key === 'Enter') onConfirm();
+                if (e.key === 'Escape') onCancel();
+            };
+            
+            btnCancel.addEventListener('click', onCancel);
+            btnConfirm.addEventListener('click', onConfirm);
+            inputEl.addEventListener('keydown', onKeyDown);
+        });
+    }
+
+    function customConfirm(title) {
+        return new Promise((resolve) => {
+            const m = document.getElementById('custom-confirm-modal');
+            const titleEl = document.getElementById('confirm-title');
+            const btnCancel = document.getElementById('btn-confirm-cancel');
+            const btnYes = document.getElementById('btn-confirm-yes');
+            
+            titleEl.textContent = title;
+            m.style.display = 'flex';
+            
+            const cleanup = () => {
+                m.style.display = 'none';
+                btnCancel.removeEventListener('click', onCancel);
+                btnYes.removeEventListener('click', onYes);
+            };
+            
+            const onCancel = () => { cleanup(); resolve(false); };
+            const onYes = () => { cleanup(); resolve(true); };
+            
+            btnCancel.addEventListener('click', onCancel);
+            btnYes.addEventListener('click', onYes);
+        });
+    }
 
     // ==================== TOAST NOTIFICATIONS ====================
     function showToast(message) {
@@ -72,7 +139,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initApp();
 
     async function initApp() {
-        // Load saved volume
         const savedVolume = localStorage.getItem('pulseVolume');
         if (savedVolume !== null) {
             audioPlayer.volume = parseFloat(savedVolume);
@@ -83,7 +149,6 @@ document.addEventListener('DOMContentLoaded', () => {
         await fetchConfig();
         await fetchPlaylists();
         
-        // Hide splash screen
         const splash = document.getElementById('splash-screen');
         if (splash) {
             splash.style.opacity = '0';
@@ -95,7 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch('/api/config');
             appConfig = await res.json();
-            applyTheme(appConfig.theme);
+            applyTheme(appConfig.theme || 'spotify');
             if (inputPlaylistPath) inputPlaylistPath.value = appConfig.playlist_path || '';
             if (inputDownloadPath) inputDownloadPath.value = appConfig.download_path || '';
         } catch (e) { console.error("Config error", e); }
@@ -139,16 +204,33 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const playlistActions = document.getElementById('playlist-actions');
+    const btnRenamePlaylist = document.getElementById('btn-rename-playlist');
+    const btnDeletePlaylist = document.getElementById('btn-delete-playlist');
+    const btnQueue = document.getElementById('btn-queue');
+    const queueContainer = document.getElementById('queue-container');
+    const queueList = document.getElementById('queue-list');
+
     // ==================== NAVIGATION ====================
     function resetNav() {
         navSearch.classList.remove('active');
         if (navSettings) navSettings.classList.remove('active');
         if (navDownloads) navDownloads.classList.remove('active');
+        const navLyrics = document.getElementById('nav-lyrics');
+        if (navLyrics) navLyrics.classList.remove('active');
+        const navFreeMusic = document.getElementById('nav-free-music');
+        if (navFreeMusic) navFreeMusic.classList.remove('active');
+        
         document.querySelectorAll('.playlists-list li').forEach(el => el.classList.remove('active'));
         searchView.style.display = 'none';
         viewTitle.style.display = 'none';
         resultsContainer.style.display = 'none';
         if (settingsContainer) settingsContainer.style.display = 'none';
+        if (playlistActions) playlistActions.style.display = 'none';
+        if (queueContainer) queueContainer.style.display = 'none';
+        
+        const lyricsContainer = document.getElementById('lyrics-container');
+        if (lyricsContainer) lyricsContainer.style.display = 'none';
     }
 
     navSearch.addEventListener('click', () => {
@@ -156,12 +238,49 @@ document.addEventListener('DOMContentLoaded', () => {
         navSearch.classList.add('active');
         searchView.style.display = 'block';
         resultsContainer.style.display = 'block';
-        if (searchInput.value.trim() === '') {
-            resultsContainer.innerHTML = '<div class="empty-state"><i class="fas fa-compact-disc"></i><p>Search for tracks or open a playlist</p></div>';
+        
+        // Restore cached search results if available
+        if (lastSearchResults.length > 0 && searchInput.value.trim() !== '') {
+            currentPlaylist = lastSearchResults;
+            renderResults(lastSearchResults, true);
         } else {
-            renderResults(currentPlaylist, true);
+            renderSearchHistory();
         }
     });
+
+    const navLyrics = document.getElementById('nav-lyrics');
+    if (navLyrics) {
+        navLyrics.addEventListener('click', () => {
+            resetNav();
+            navLyrics.classList.add('active');
+            viewTitle.style.display = 'block';
+            viewTitle.textContent = "Lyrics";
+            document.getElementById('lyrics-container').style.display = 'block';
+            fetchLyricsForCurrentSong();
+        });
+    }
+    
+    const navFreeMusic = document.getElementById('nav-free-music');
+    if (navFreeMusic) {
+        navFreeMusic.addEventListener('click', () => {
+            resetNav();
+            navFreeMusic.classList.add('active');
+            viewTitle.style.display = 'block';
+            viewTitle.textContent = "Trending Free Music";
+            resultsContainer.style.display = 'block';
+            performSearch("NoCopyrightSounds");
+        });
+    }
+    
+    if (btnQueue) {
+        btnQueue.addEventListener('click', () => {
+            resetNav();
+            viewTitle.style.display = 'block';
+            viewTitle.textContent = "Up Next";
+            queueContainer.style.display = 'block';
+            renderQueue();
+        });
+    }
 
     if (navDownloads) {
         navDownloads.addEventListener('click', async () => {
@@ -192,19 +311,78 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    let activePlaylistName = null;
+
     function openPlaylistView(name) {
         resetNav();
         viewTitle.style.display = 'block';
         viewTitle.textContent = name;
         resultsContainer.style.display = 'block';
         currentPlaylist = allPlaylists[name] || [];
-        renderResults(currentPlaylist, false);
+        activePlaylistName = name;
+        if (playlistActions && name !== "Liked Songs") {
+            playlistActions.style.display = 'flex';
+        }
+        renderResults(currentPlaylist, false, true);
+        
+        // Pre-fetch the first 3 results to make playback instant
+        for(let i=0; i<Math.min(3, currentPlaylist.length); i++) {
+            const vid = currentPlaylist[i].videoId;
+            if(vid !== 'local' && !prefetchCache[vid]) {
+                fetch('/api/stream?id=' + vid)
+                    .then(res => res.json())
+                    .then(d => { if(d.stream_url) prefetchCache[vid] = d.stream_url; })
+                    .catch(()=>{});
+            }
+        }
+    }
+    
+    if (btnRenamePlaylist) {
+        btnRenamePlaylist.addEventListener('click', async () => {
+            const newName = await customPrompt("Enter new name for playlist:", activePlaylistName);
+            if (newName && newName !== activePlaylistName) {
+                try {
+                    await fetch('/api/playlists/' + encodeURIComponent(activePlaylistName), {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ newName })
+                    });
+                    fetchPlaylists();
+                    openPlaylistView(newName);
+                    showToast("Playlist renamed");
+                } catch(e) { console.error(e); }
+            }
+        });
+    }
+
+    if (btnDeletePlaylist) {
+        btnDeletePlaylist.addEventListener('click', async () => {
+            if (await customConfirm("Delete playlist '" + activePlaylistName + "'?")) {
+                try {
+                    await fetch('/api/playlists/' + encodeURIComponent(activePlaylistName), { method: 'DELETE' });
+                    fetchPlaylists();
+                    navSearch.click();
+                    showToast("Playlist deleted");
+                } catch(e) { console.error(e); }
+            }
+        });
     }
 
     // ==================== THEMES ====================
     function applyTheme(theme) {
         const root = document.documentElement;
-        if (theme === 'sunset') {
+        if (theme === 'spotify') {
+            root.style.setProperty('--bg-main', '#121212');
+            root.style.setProperty('--bg-sidebar', '#000000');
+            root.style.setProperty('--bg-hover', '#1a1a1a');
+            root.style.setProperty('--bg-player', '#181818');
+            root.style.setProperty('--accent-primary', '#1DB954');
+            root.style.setProperty('--accent-secondary', '#1ed760');
+            root.style.setProperty('--accent-tertiary', '#1DB954');
+            root.style.setProperty('--text-primary', '#ffffff');
+            root.style.setProperty('--text-secondary', '#b3b3b3');
+            root.style.setProperty('--border', '#282828');
+        } else if (theme === 'sunset') {
             root.style.setProperty('--bg-main', '#050005');
             root.style.setProperty('--bg-sidebar', '#0a000a');
             root.style.setProperty('--bg-hover', '#1f0b18');
@@ -276,13 +454,96 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const btnCheckUpdates = document.getElementById('btn-check-updates');
+    const updateStatus = document.getElementById('update-status');
+    if (btnCheckUpdates) {
+        btnCheckUpdates.addEventListener('click', async () => {
+            btnCheckUpdates.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking GitHub...';
+            btnCheckUpdates.disabled = true;
+            
+            try {
+                const res = await fetch('/api/update/check');
+                const data = await res.json();
+                
+                if (data.update_available) {
+                    if(await customConfirm("Update " + data.latest_version + " is available! Would you like to open the GitHub page to download the new EXE?")) {
+                        await fetch('/api/open_url', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url: data.html_url })
+                        });
+                        btnCheckUpdates.innerHTML = 'Check for Updates';
+                        btnCheckUpdates.disabled = false;
+                    } else {
+                        btnCheckUpdates.innerHTML = 'Check for Updates';
+                        btnCheckUpdates.disabled = false;
+                    }
+                } else {
+                    btnCheckUpdates.innerHTML = 'Check for Updates';
+                    btnCheckUpdates.disabled = false;
+                    updateStatus.innerHTML = '<i class="fas fa-check-circle" style="color:var(--accent-secondary)"></i> You are on the latest version! (' + (data.current_version || 'v16.0') + ')';
+                    showToast("App is up to date!");
+                }
+            } catch (err) {
+                btnCheckUpdates.innerHTML = 'Check for Updates';
+                btnCheckUpdates.disabled = false;
+                showToast("Failed to check for updates");
+            }
+        });
+    }
+
     // ==================== SEARCH ====================
     let searchTimeout;
+    
+    function loadSearchHistory() {
+        try {
+            return JSON.parse(localStorage.getItem('pulseSearchHistory')) || [];
+        } catch(e) { return []; }
+    }
+    
+    function saveSearchHistory(query) {
+        let history = loadSearchHistory();
+        history = history.filter(q => q !== query);
+        history.unshift(query);
+        if (history.length > 10) history.pop();
+        localStorage.setItem('pulseSearchHistory', JSON.stringify(history));
+    }
+    
+    function renderSearchHistory() {
+        const history = loadSearchHistory();
+        if (history.length === 0) {
+            resultsContainer.innerHTML = '<div class="empty-state"><i class="fas fa-search"></i><p>Search for tracks or artists</p></div>';
+            return;
+        }
+        let html = '<h3 style="color:var(--text-secondary); margin: 1rem 2rem;">Recent Searches</h3><div style="display:flex; flex-direction:column; gap:0.5rem; padding: 0 2rem;">';
+        history.forEach(query => {
+            html += `<div class="history-item" style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 4px; cursor: pointer; color: white;">
+                        <i class="fas fa-clock" style="margin-right: 10px; color: var(--text-secondary);"></i> ${query}
+                     </div>`;
+        });
+        html += '</div>';
+        resultsContainer.innerHTML = html;
+        
+        document.querySelectorAll('.history-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                const q = e.target.textContent.trim();
+                searchInput.value = q;
+                performSearch(q);
+            });
+        });
+    }
+
+    searchInput.addEventListener('focus', () => {
+        if (searchInput.value.trim() === '') {
+            renderSearchHistory();
+        }
+    });
+
     searchInput.addEventListener('input', (e) => {
         clearTimeout(searchTimeout);
         const query = e.target.value.trim();
         if (query.length === 0) {
-            resultsContainer.innerHTML = '<div class="empty-state"><i class="fas fa-compact-disc"></i><p>Search for tracks or open a playlist</p></div>';
+            renderSearchHistory();
             return;
         }
         searchTimeout = setTimeout(() => performSearch(query), 500);
@@ -291,6 +552,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function performSearch(query) {
         searchSpinner.style.display = 'block';
         resultsContainer.innerHTML = '';
+        saveSearchHistory(query);
         try {
             const res = await fetch('/api/search?q=' + encodeURIComponent(query));
             const data = await res.json();
@@ -298,7 +560,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 resultsContainer.innerHTML = '<div class="empty-state"><p>No results found for "' + query + '"</p></div>';
             } else {
                 currentPlaylist = data;
+                lastSearchResults = data; // Cache search results
                 renderResults(data, true);
+                // Pre-fetch the first 3 results to make playback instant
+                for(let i=0; i<Math.min(3, data.length); i++) {
+                    if(!prefetchCache[data[i].videoId]) {
+                        fetch('/api/stream?id=' + data[i].videoId)
+                            .then(res => res.json())
+                            .then(d => { if(d.stream_url) prefetchCache[data[i].videoId] = d.stream_url; })
+                            .catch(()=>{});
+                    }
+                }
             }
         } catch (err) {
             resultsContainer.innerHTML = '<div class="empty-state"><p>Error fetching results</p></div>';
@@ -308,7 +580,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ==================== RENDER RESULTS ====================
-    function renderResults(songs, isSearch) {
+    function renderResults(songs, isSearch, isPlaylist=false) {
         resultsContainer.innerHTML = '';
         if (songs.length === 0) {
             resultsContainer.innerHTML = '<div class="empty-state"><i class="fas fa-compact-disc"></i><p>No tracks found</p></div>';
@@ -320,8 +592,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const isLocal = song.videoId === 'local';
             const dlBtnHtml = isLocal
-                ? '<i class="fas fa-check-circle" style="color:var(--accent-secondary);margin:0.5rem;" title="Available Offline"></i>'
+                ? '<i class="fas fa-check-circle" style="color:var(--accent-secondary);margin:0.5rem;" title="Available Offline"></i><button class="btn-delete-dl" title="Delete Download"><i class="fas fa-trash"></i></button>'
                 : '<button class="btn-download" title="Download Offline"><i class="fas fa-download"></i></button>';
+                
+            const removeBtnHtml = isPlaylist 
+                ? '<button class="btn-remove" title="Remove from Playlist" style="margin-left:5px;"><i class="fas fa-minus-circle"></i></button>'
+                : '';
 
             div.innerHTML =
                 '<img class="song-thumb" src="' + (song.thumbnail || 'https://via.placeholder.com/45') + '" alt="cover">' +
@@ -332,6 +608,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 '<div class="song-actions">' +
                 dlBtnHtml +
                 '<button class="btn-add" title="Add to Playlist"><i class="fas fa-plus"></i></button>' +
+                removeBtnHtml +
                 '<div class="song-duration">' + song.duration + '</div>' +
                 '</div>';
 
@@ -355,8 +632,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 activeSongToAdd = song;
                 showPlaylistModal();
             });
+            
+            // Remove from playlist
+            const rmBtn = div.querySelector('.btn-remove');
+            if (rmBtn) {
+                rmBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    try {
+                        await fetch('/api/playlists/' + encodeURIComponent(activePlaylistName) + '/remove', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ videoId: song.videoId })
+                        });
+                        openPlaylistView(activePlaylistName);
+                        showToast("Song removed");
+                    } catch(e){}
+                });
+            }
 
-            // Download
+            // Download & Delete Download
             const dlBtn = div.querySelector('.btn-download');
             if (dlBtn) {
                 dlBtn.addEventListener('click', async (e) => {
@@ -382,14 +676,64 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 });
             }
+            
+            const delDlBtn = div.querySelector('.btn-delete-dl');
+            if (delDlBtn) {
+                delDlBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    if(await customConfirm("Delete this downloaded file?")) {
+                        try {
+                            await fetch('/api/download?file=' + encodeURIComponent(song.filepath), { method: 'DELETE' });
+                            showToast("File deleted");
+                            navDownloads.click(); // refresh
+                        } catch(e){}
+                    }
+                });
+            }
 
             resultsContainer.appendChild(div);
         });
     }
 
+    function renderQueue() {
+        queueList.innerHTML = '';
+        if (playingQueue.length === 0) {
+            queueList.innerHTML = '<div class="empty-state"><p>Queue is empty</p></div>';
+            return;
+        }
+        
+        let startIdx = playingIndex >= 0 ? playingIndex : 0;
+        
+        for (let i = startIdx; i < playingQueue.length; i++) {
+            const song = playingQueue[i];
+            const div = document.createElement('div');
+            div.className = 'song-item';
+            if (i === playingIndex) {
+                div.style.borderLeft = '3px solid var(--accent-primary)';
+                div.style.backgroundColor = 'rgba(255,255,255,0.05)';
+            }
+            
+            div.innerHTML =
+                '<img class="song-thumb" src="' + (song.thumbnail || 'https://via.placeholder.com/45') + '" alt="cover">' +
+                '<div class="song-details">' +
+                '<div class="song-title">' + song.title + '</div>' +
+                '<div class="song-artist">' + song.artists + '</div>' +
+                '</div>' +
+                '<div class="song-actions">' +
+                '<div class="song-duration">' + song.duration + '</div>' +
+                '</div>';
+                
+            div.addEventListener('click', () => {
+                playSong(i);
+            });
+            
+            queueList.appendChild(div);
+        }
+    }
+
     // ==================== PLAYLISTS MODAL ====================
     btnNewPlaylist.addEventListener('click', async () => {
-        const name = prompt("Enter playlist name:");
+        const name = await customPrompt("Enter playlist name:");
         if (name) {
             try {
                 await fetch('/api/playlists', {
@@ -427,11 +771,180 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     btnCloseModal.addEventListener('click', () => { modal.style.display = 'none'; });
+    
+    // ==================== MAIN MENU & INFO MODAL ====================
+    if (btnMainMenu) {
+        btnMainMenu.addEventListener('click', (e) => {
+            e.stopPropagation();
+            mainMenuDropdown.style.display = mainMenuDropdown.style.display === 'none' ? 'block' : 'none';
+        });
+    }
+
+    document.addEventListener('click', (e) => {
+        if (mainMenuDropdown && !mainMenuDropdown.contains(e.target) && e.target !== btnMainMenu) {
+            mainMenuDropdown.style.display = 'none';
+        }
+    });
+
+    const openInfoModal = (title, htmlContent) => {
+        infoModalTitle.textContent = title;
+        infoModalBody.innerHTML = htmlContent;
+        infoModal.style.display = 'flex';
+        mainMenuDropdown.style.display = 'none';
+    };
+
+    document.getElementById('menu-updates')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        openInfoModal("What's New in V1.3.9", `
+            <ul style="padding-left:20px; line-height:1.6;">
+                <li><b>Instant Playback Engine:</b> Background pre-fetcher makes songs load instantly.</li>
+                <li><b>Spotify Dark Theme:</b> New default styling with native-looking UI dialogs.</li>
+                <li><b>Auto-Updater:</b> Pulse Music will now detect updates seamlessly from the cloud.</li>
+                <li><b>Offline Manager:</b> Delete downloaded files directly from the Downloads tab.</li>
+                <li><b>Queue View:</b> See your "Up Next" queue by clicking the list icon in the player.</li>
+            </ul>
+        `);
+    });
+
+    document.getElementById('menu-credits')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        openInfoModal("Credits & Thanks", `
+            <div style="text-align: center; margin-bottom: 20px;">
+                <i class="fas fa-heart" style="color: #ff0055; font-size: 3rem; margin-bottom: 10px;"></i>
+                <h3 style="margin-top:0;">Made with Love</h3>
+            </div>
+            <table style="width:100%; border-collapse: collapse; font-size: 1.1em;">
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+                    <td style="padding:12px 0; color:var(--text-secondary);">Founder</td>
+                    <td style="padding:12px 0; color:white; text-align:right;"><b>Hakim (حكيم)</b></td>
+                </tr>
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+                    <td style="padding:12px 0; color:var(--text-secondary);">Developer</td>
+                    <td style="padding:12px 0; color:white; text-align:right;"><b>thecrewx</b></td>
+                </tr>
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+                    <td style="padding:12px 0; color:var(--text-secondary);">Idea</td>
+                    <td style="padding:12px 0; color:white; text-align:right;"><b>vishal</b></td>
+                </tr>
+                <tr>
+                    <td style="padding:12px 0; color:var(--text-secondary);">Supporters</td>
+                    <td style="padding:12px 0; color:white; text-align:right;"><b>vishal, mei</b></td>
+                </tr>
+            </table>
+        `);
+    });
+
+    document.getElementById('menu-help')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        openInfoModal("Help & Support", `
+            <p>Welcome to Pulse Music!</p>
+            <ul style="padding-left:20px; margin-top:10px;">
+                <li><b>Search:</b> Find any song on YouTube Music.</li>
+                <li><b>Playlists:</b> Create local playlists to organize your favorite tracks.</li>
+                <li><b>Downloads:</b> Click the download icon to save a song offline as an MP3.</li>
+                <li><b>Lyrics:</b> Click the Lyrics tab while a song is playing to view synced lyrics.</li>
+            </ul>
+            <p style="margin-top:10px;">All data is stored locally on your device.</p>
+        `);
+    });
+
+    document.getElementById('menu-keybinds')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        openInfoModal("Keyboard Shortcuts", `
+            <table style="width:100%; border-collapse: collapse;">
+                <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:8px 0; color:white;"><b>Spacebar</b></td>
+                    <td style="padding:8px 0;">Play / Pause</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:8px 0; color:white;"><b>/ (Forward Slash)</b></td>
+                    <td style="padding:8px 0;">Focus Search</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:8px 0; color:white;"><b>M</b></td>
+                    <td style="padding:8px 0;">Mute / Unmute</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:8px 0; color:white;"><b>Up Arrow</b></td>
+                    <td style="padding:8px 0;">Volume Up</td>
+                </tr>
+                <tr>
+                    <td style="padding:8px 0; color:white;"><b>Down Arrow</b></td>
+                    <td style="padding:8px 0;">Volume Down</td>
+                </tr>
+            </table>
+            <p style="margin-top:15px; font-size:0.9em;">Pulse also supports global hardware media keys (Play, Pause, Next, Prev).</p>
+        `);
+    });
+
+    if (btnCloseInfoModal) {
+        btnCloseInfoModal.addEventListener('click', () => { infoModal.style.display = 'none'; });
+    }
+
     window.addEventListener('click', (e) => {
         if (e.target === modal) modal.style.display = 'none';
+        if (e.target === infoModal) infoModal.style.display = 'none';
     });
 
     // ==================== AUDIO PLAYER ====================
+    let prefetchCache = {}; // URL Cache for next song
+
+    function prefetchNextSong() {
+        if (playingQueue.length === 0) return;
+        let next = playingIndex + 1;
+        if (next >= playingQueue.length) {
+            if (repeatMode === 1) next = 0;
+            else return;
+        }
+        const nextSong = playingQueue[next];
+        if (nextSong.videoId === 'local') return;
+        if (prefetchCache[nextSong.videoId]) return;
+        
+        fetch('/api/stream?id=' + nextSong.videoId)
+            .then(res => res.json())
+            .then(data => {
+                if (data.stream_url) {
+                    prefetchCache[nextSong.videoId] = data.stream_url;
+                }
+            }).catch(e => console.error("Prefetch failed", e));
+    }
+
+    function fetchLyricsForCurrentSong() {
+        const lyricsContent = document.getElementById('lyrics-content');
+        if (!lyricsContent) return;
+        
+        if (playingIndex < 0 || playingQueue.length === 0) {
+            lyricsContent.innerHTML = '<div class="empty-state"><p>Play a song to see lyrics</p></div>';
+            return;
+        }
+        
+        const song = playingQueue[playingIndex];
+        lyricsContent.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Searching for lyrics...</p></div>';
+        
+        // Clean up title and artist for better match
+        const cleanTitle = song.title.replace(/[\(\[].*?[\)\]]/g, '').trim();
+        const cleanArtist = song.artists.split(',')[0].split('&')[0].trim();
+        
+        fetch(`https://lrclib.net/api/search?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(cleanArtist)}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.length > 0) {
+                    const track = data[0];
+                    const lyrics = track.syncedLyrics || track.plainLyrics;
+                    if (lyrics) {
+                        lyricsContent.innerHTML = `<pre class="lyrics-text">${lyrics}</pre>`;
+                    } else {
+                        lyricsContent.innerHTML = '<div class="empty-state"><p>No lyrics found for this track.</p></div>';
+                    }
+                } else {
+                    lyricsContent.innerHTML = '<div class="empty-state"><p>No lyrics found for this track.</p></div>';
+                }
+            })
+            .catch(() => {
+                lyricsContent.innerHTML = '<div class="empty-state"><p>Failed to load lyrics.</p></div>';
+            });
+    }
+
     async function playSong(index) {
         if (index < 0 || index >= playingQueue.length) return;
         playingIndex = index;
@@ -449,7 +962,10 @@ document.addEventListener('DOMContentLoaded', () => {
         btnNext.disabled = true;
         btnPrev.disabled = true;
         
-        // Media Session API
+        if (document.getElementById('nav-lyrics') && document.getElementById('nav-lyrics').classList.contains('active')) {
+            fetchLyricsForCurrentSong();
+        }
+        
         if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
                 title: song.title,
@@ -469,17 +985,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 audioPlayer.play();
                 updatePlayPauseUI(true);
             } else {
-                const res = await fetch('/api/stream?id=' + song.videoId);
-                const data = await res.json();
-                if (data.stream_url) {
+                if (prefetchCache[song.videoId]) {
                     npTitle.textContent = song.title;
-                    audioPlayer.src = data.stream_url;
+                    audioPlayer.src = prefetchCache[song.videoId];
                     audioPlayer.play();
                     updatePlayPauseUI(true);
                 } else {
-                    npTitle.textContent = 'Error loading stream';
+                    const res = await fetch('/api/stream?id=' + song.videoId);
+                    const data = await res.json();
+                    if (data.stream_url) {
+                        npTitle.textContent = song.title;
+                        audioPlayer.src = data.stream_url;
+                        audioPlayer.play();
+                        updatePlayPauseUI(true);
+                    } else {
+                        npTitle.textContent = 'Error loading stream';
+                    }
                 }
             }
+            prefetchNextSong(); // Automatically fetch the next track's URL in the background
         } catch (err) {
             npTitle.textContent = 'Network error';
         } finally {
@@ -559,13 +1083,13 @@ document.addEventListener('DOMContentLoaded', () => {
         repeatMode = (repeatMode + 1) % 3;
         btnRepeat.classList.toggle('active', repeatMode > 0);
         if (repeatMode === 0) {
-            btnRepeat.innerHTML = '<i class="fas fa-redo"></i>';
+            btnRepeat.innerHTML = '<i class="fas fa-redo"></i> <span>Loop</span>';
             btnRepeat.title = 'Repeat (Off)';
         } else if (repeatMode === 1) {
-            btnRepeat.innerHTML = '<i class="fas fa-redo"></i>';
+            btnRepeat.innerHTML = '<i class="fas fa-redo"></i> <span>Loop All</span>';
             btnRepeat.title = 'Repeat All';
         } else {
-            btnRepeat.innerHTML = '<i class="fas fa-redo"></i><span style="font-size:0.5em;position:absolute;margin-left:-8px;margin-top:2px;">1</span>';
+            btnRepeat.innerHTML = '<i class="fas fa-redo"></i><span style="font-size:0.5em;position:absolute;margin-left:-8px;margin-top:2px;">1</span> <span>Loop 1</span>';
             btnRepeat.title = 'Repeat One';
         }
     });

@@ -32,6 +32,8 @@
                 
                 <nav class="nav-links">
                     <a href="#" id="nav-search" class="active"><i class="fas fa-search"></i> Search</a>
+                    <a href="#" id="nav-free-music"><i class="fas fa-fire"></i> Free Music</a>
+                    <a href="#" id="nav-lyrics"><i class="fas fa-music"></i> Lyrics</a>
                     <a href="#" id="nav-downloads"><i class="fas fa-download"></i> Downloads</a>
                     <a href="#" id="nav-settings"><i class="fas fa-cog"></i> Settings</a>
                 </nav>
@@ -55,7 +57,23 @@
                         <input type="text" id="search-input" placeholder="Search for tracks, artists..." autofocus>
                         <div class="spinner" id="search-spinner" style="display: none;"></div>
                     </div>
-                    <h2 id="view-title" style="display: none;">Liked Songs</h2>
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <h2 id="view-title" style="display: none;">Liked Songs</h2>
+                        <div id="playlist-actions" style="display: none; gap: 10px;">
+                            <button id="btn-rename-playlist" title="Rename Playlist" style="background:rgba(255,255,255,0.1);border:1px solid var(--border);color:var(--text-primary);cursor:pointer;padding:5px 10px;border-radius:4px;"><i class="fas fa-edit"></i> Rename</button>
+                            <button id="btn-delete-playlist" title="Delete Playlist" style="background:rgba(255,255,255,0.1);border:1px solid var(--border);color:var(--text-primary);cursor:pointer;padding:5px 10px;border-radius:4px;"><i class="fas fa-trash"></i> Delete</button>
+                        </div>
+                    </div>
+                    
+                    <div class="menu-container" style="position: relative; margin-left: auto;">
+                        <button id="btn-main-menu" title="Menu" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:1.2rem;"><i class="fas fa-ellipsis-v"></i></button>
+                        <div id="main-menu-dropdown" style="display:none; position:absolute; right:0; top:30px; background:var(--bg-hover); border:1px solid var(--border); border-radius:4px; padding:0.5rem; width:150px; z-index:100; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+                            <a href="#" id="menu-updates" style="display:block; padding:0.5rem; color:white; text-decoration:none;"><i class="fas fa-sync-alt" style="width:20px;"></i> Updates</a>
+                            <a href="#" id="menu-credits" style="display:block; padding:0.5rem; color:white; text-decoration:none;"><i class="fas fa-heart" style="width:20px;"></i> Credits</a>
+                            <a href="#" id="menu-help" style="display:block; padding:0.5rem; color:white; text-decoration:none;"><i class="fas fa-question-circle" style="width:20px;"></i> Help</a>
+                            <a href="#" id="menu-keybinds" style="display:block; padding:0.5rem; color:white; text-decoration:none;"><i class="fas fa-keyboard" style="width:20px;"></i> Key Binds</a>
+                        </div>
+                    </div>
                 </header>
 
                 <div class="scroll-area">
@@ -66,14 +84,26 @@
                         </div>
                     </div>
                     
+                    <div id="lyrics-container" style="display: none; padding: 2rem;">
+                        <div id="lyrics-content" style="font-size: 1.2rem; line-height: 2; color: var(--text-primary); max-width: 800px; margin: 0 auto; text-align: center;">
+                            <div class="empty-state"><p>Play a song to see lyrics</p></div>
+                        </div>
+                    </div>
+                    
+                    <div id="queue-container" style="display: none; padding: 2rem;">
+                        <h3 style="color:white; margin-bottom: 1rem;">Up Next</h3>
+                        <div id="queue-list" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
+                    </div>
+                    
                     <div id="settings-container" style="display: none; color: var(--text-primary);">
                         <div class="settings-section">
                             <h3>Appearance</h3>
                             <p>Choose your application theme.</p>
                             <div class="theme-options" style="display: flex; gap: 1rem; margin-top: 1rem;">
-                                <button class="btn-theme" data-theme="sunset">Sunset (Dark Red)</button>
-                                <button class="btn-theme" data-theme="classic">Classic Pulse (Cyan)</button>
-                                <button class="btn-theme" data-theme="light">Light Mode</button>
+                                <button class="btn-theme" data-theme="spotify" style="padding: 0.5rem; background: transparent; border: 1px solid var(--border); color: white; border-radius: 4px; cursor: pointer;">Spotify Dark</button>
+                                <button class="btn-theme" data-theme="sunset" style="padding: 0.5rem; background: transparent; border: 1px solid var(--border); color: white; border-radius: 4px; cursor: pointer;">Sunset Red</button>
+                                <button class="btn-theme" data-theme="classic" style="padding: 0.5rem; background: transparent; border: 1px solid var(--border); color: white; border-radius: 4px; cursor: pointer;">Classic Cyan</button>
+                                <button class="btn-theme" data-theme="light" style="padding: 0.5rem; background: transparent; border: 1px solid var(--border); color: white; border-radius: 4px; cursor: pointer;">Light Mode</button>
                             </div>
                         </div>
                         
@@ -92,6 +122,15 @@
                             <div style="display: flex; gap: 1rem; margin-top: 1rem; align-items: center;">
                                 <input type="text" id="input-download-path" readonly style="flex:1; padding: 0.8rem; background: rgba(255,255,255,0.1); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px;">
                                 <button id="btn-choose-download-folder" style="padding: 0.8rem 1.5rem; background: var(--accent-secondary); border: none; color: white; border-radius: 4px; cursor: pointer; font-weight: bold;">Choose Folder</button>
+                            </div>
+                        </div>
+
+                        <div class="settings-section" style="margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 2rem;">
+                            <h3><i class="fas fa-cloud-download-alt" style="color:var(--accent-primary)"></i> Auto Update</h3>
+                            <p>Check for the latest version of Pulse Music. This will automatically download and install updates from the cloud for free.</p>
+                            <div style="display: flex; gap: 1rem; margin-top: 1rem; align-items: center;">
+                                <button id="btn-check-updates" style="padding: 0.8rem 1.5rem; background: transparent; border: 1px solid var(--accent-primary); color: var(--text-primary); border-radius: 4px; cursor: pointer; font-weight: bold; transition: all 0.2s;">Check for Updates</button>
+                                <span id="update-status" style="color: var(--text-secondary); font-size: 0.9rem;">Current Version: V1.3.9</span>
                             </div>
                         </div>
                     </div>
@@ -115,7 +154,7 @@
                     <button id="btn-prev" disabled><i class="fas fa-step-backward"></i></button>
                     <button id="btn-play-pause" disabled class="btn-play"><i class="fas fa-play"></i></button>
                     <button id="btn-next" disabled><i class="fas fa-step-forward"></i></button>
-                    <button id="btn-repeat" title="Repeat (Off)"><i class="fas fa-redo"></i></button>
+                    <button id="btn-repeat" title="Repeat (Off)" style="display:flex;align-items:center;gap:5px;"><i class="fas fa-redo"></i> <span>Loop</span></button>
                 </div>
                 <div class="progress-container">
                     <span id="time-current">0:00</span>
@@ -127,6 +166,7 @@
             </div>
             
             <div class="volume-container">
+                <button id="btn-queue" title="View Queue" style="margin-right: 15px;"><i class="fas fa-list"></i></button>
                 <button id="btn-mute"><i class="fas fa-volume-up"></i></button>
                 <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1">
             </div>
@@ -140,6 +180,39 @@
             <h3>Add to Playlist</h3>
             <ul id="modal-playlists-list"></ul>
             <button id="btn-close-modal">Close</button>
+        </div>
+    </div>
+    
+    <div id="info-modal" class="modal">
+        <div class="modal-content" style="max-width: 500px; text-align: left;">
+            <h3 id="info-modal-title" style="margin-bottom: 1rem;">Title</h3>
+            <div id="info-modal-body" style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 1.5rem; max-height: 60vh; overflow-y: auto;">
+                Content goes here...
+            </div>
+            <button id="btn-close-info-modal" style="width: 100%; background: var(--accent-primary); color: white; border: none; padding: 0.8rem; border-radius: 4px; font-weight: bold; cursor: pointer;">Got it</button>
+        </div>
+    </div>
+
+    <!-- Custom Prompt Modal -->
+    <div id="custom-prompt-modal" class="modal">
+        <div class="modal-content">
+            <h3 id="prompt-title">Enter Value</h3>
+            <input type="text" id="prompt-input" style="width: 100%; padding: 0.8rem; margin-bottom: 1rem; background: rgba(255,255,255,0.1); border: 1px solid var(--border); color: white; border-radius: 4px; outline: none;" autofocus>
+            <div style="display: flex; gap: 1rem;">
+                <button id="btn-prompt-cancel" style="flex: 1; padding: 0.8rem; background: transparent; border: 1px solid var(--border); color: var(--text-secondary); border-radius: 4px; cursor: pointer;">Cancel</button>
+                <button id="btn-prompt-confirm" style="flex: 1; padding: 0.8rem; background: var(--accent-primary); border: none; color: white; border-radius: 4px; cursor: pointer; font-weight: bold;">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirm Modal -->
+    <div id="custom-confirm-modal" class="modal">
+        <div class="modal-content">
+            <h3 id="confirm-title">Are you sure?</h3>
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button id="btn-confirm-cancel" style="flex: 1; padding: 0.8rem; background: transparent; border: 1px solid var(--border); color: var(--text-secondary); border-radius: 4px; cursor: pointer;">Cancel</button>
+                <button id="btn-confirm-yes" style="flex: 1; padding: 0.8rem; background: var(--accent-primary); border: none; color: white; border-radius: 4px; cursor: pointer; font-weight: bold;">Yes, Delete</button>
+            </div>
         </div>
     </div>
 
