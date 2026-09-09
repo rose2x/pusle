@@ -1,4 +1,3 @@
-name=.github/workflows/build.yml url=https://github.com/thecrewx/puslemusic/blob/main/.github/workflows/build.yml
 name: Build Arch Linux Package
 
 on:
